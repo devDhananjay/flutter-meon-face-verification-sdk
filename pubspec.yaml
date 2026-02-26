@@ -1,6 +1,6 @@
 name: meon_face_verification
 description: Flutter SDK for Meon Face Verification, mirroring the existing React Native component.
-version: 0.1.0
+version: 0.1.2
 homepage: https://face-finder.meon.co.in
 
 environment:
@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  webview_flutter: ^4.8.0
+  flutter_inappwebview: ^6.0.0
   permission_handler: ^11.3.0
 
 dev_dependencies:

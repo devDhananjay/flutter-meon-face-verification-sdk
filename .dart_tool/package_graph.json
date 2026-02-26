@@ -5,12 +5,12 @@
   "packages": [
     {
       "name": "meon_face_verification",
-      "version": "0.1.0",
+      "version": "0.1.2",
       "dependencies": [
         "flutter",
+        "flutter_inappwebview",
         "http",
-        "permission_handler",
-        "webview_flutter"
+        "permission_handler"
       ],
       "devDependencies": [
         "flutter_test"
@@ -48,13 +48,16 @@
       ]
     },
     {
-      "name": "webview_flutter",
-      "version": "4.13.1",
+      "name": "flutter_inappwebview",
+      "version": "6.1.5",
       "dependencies": [
         "flutter",
-        "webview_flutter_android",
-        "webview_flutter_platform_interface",
-        "webview_flutter_wkwebview"
+        "flutter_inappwebview_android",
+        "flutter_inappwebview_ios",
+        "flutter_inappwebview_macos",
+        "flutter_inappwebview_platform_interface",
+        "flutter_inappwebview_web",
+        "flutter_inappwebview_windows"
       ]
     },
     {
@@ -207,31 +210,54 @@
       ]
     },
     {
-      "name": "webview_flutter_wkwebview",
-      "version": "3.23.7",
+      "name": "flutter_inappwebview_windows",
+      "version": "0.6.0",
       "dependencies": [
         "flutter",
-        "meta",
-        "path",
-        "webview_flutter_platform_interface"
+        "flutter_inappwebview_platform_interface"
       ]
     },
     {
-      "name": "webview_flutter_platform_interface",
-      "version": "2.14.0",
+      "name": "flutter_inappwebview_web",
+      "version": "1.1.2",
       "dependencies": [
         "flutter",
-        "meta",
+        "flutter_inappwebview_platform_interface",
+        "flutter_web_plugins",
+        "web"
+      ]
+    },
+    {
+      "name": "flutter_inappwebview_macos",
+      "version": "1.1.2",
+      "dependencies": [
+        "flutter",
+        "flutter_inappwebview_platform_interface"
+      ]
+    },
+    {
+      "name": "flutter_inappwebview_ios",
+      "version": "1.1.2",
+      "dependencies": [
+        "flutter",
+        "flutter_inappwebview_platform_interface"
+      ]
+    },
+    {
+      "name": "flutter_inappwebview_android",
+      "version": "1.1.3",
+      "dependencies": [
+        "flutter",
+        "flutter_inappwebview_platform_interface"
+      ]
+    },
+    {
+      "name": "flutter_inappwebview_platform_interface",
+      "version": "1.3.0+1",
+      "dependencies": [
+        "flutter",
+        "flutter_inappwebview_internal_annotations",
         "plugin_platform_interface"
-      ]
-    },
-    {
-      "name": "webview_flutter_android",
-      "version": "4.10.13",
-      "dependencies": [
-        "flutter",
-        "meta",
-        "webview_flutter_platform_interface"
       ]
     },
     {
@@ -336,6 +362,11 @@
       "dependencies": [
         "flutter"
       ]
+    },
+    {
+      "name": "flutter_inappwebview_internal_annotations",
+      "version": "1.3.0",
+      "dependencies": []
     },
     {
       "name": "typed_data",

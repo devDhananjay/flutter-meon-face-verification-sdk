@@ -1,9 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 typedef MeonVerificationSuccessCallback = void Function(
     Map<String, dynamic> data);
@@ -73,7 +73,7 @@ class MeonFaceVerification extends StatefulWidget {
 }
 
 class _MeonFaceVerificationState extends State<MeonFaceVerification> {
-  late final WebViewController _webViewController;
+  InAppWebViewController? _webViewController;
 
   bool _isLoading = true;
   bool _webViewLoading = false;
@@ -91,46 +91,7 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
   @override
   void initState() {
     super.initState();
-    _initWebViewController();
     _initializeFaceVerification();
-  }
-
-  void _initWebViewController() {
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
-      ..setUserAgent(
-        'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/91.0 Mobile Safari/537.36',
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (url) {
-            setState(() {
-              _webViewLoading = true;
-            });
-          },
-          onPageFinished: (url) async {
-            setState(() {
-              _webViewLoading = false;
-            });
-            await _injectPermissionScript();
-          },
-          onWebResourceError: (error) {
-            debugPrint('[FaceVerification] WebView error: $error');
-            setState(() {
-              _webViewLoading = false;
-            });
-          },
-          onNavigationRequest: (request) {
-            debugPrint('[FaceVerification] URL loading: ${request.url}');
-            if (_shouldInterceptUrl(request.url) && !_isProcessingComplete) {
-              _handleVerificationCompletion();
-              return NavigationDecision.prevent;
-            }
-            return NavigationDecision.navigate;
-          },
-        ),
-      );
   }
 
   bool _shouldInterceptUrl(String url) {
@@ -159,6 +120,14 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
         setState(() {
           _permissionsGranted = true;
         });
+
+        // If the WebView is already visible, refresh once so the page
+        // can see that camera/mic/location permissions are now granted.
+        final controller = _webViewController;
+        if (controller != null) {
+          await controller.reload();
+        }
+
         return true;
       } else {
         _handlePermissionDenied(statuses);
@@ -343,8 +312,6 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
         _transactionId = transactionId;
         _isLoading = false;
       });
-
-      await _webViewController.loadRequest(Uri.parse(url));
     } catch (e) {
       final msg = e.toString().replaceFirst('Exception: ', '');
       setState(() {
@@ -402,83 +369,6 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
     }
   }
 
-  Future<void> _injectPermissionScript() async {
-    final script = '''
-      (function() {
-        const storePermission = (name, state) => { 
-          try { 
-            sessionStorage.setItem('permission_' + name, state); 
-            localStorage.setItem('permission_' + name, state); 
-            console.log('[FaceVerification] Permission stored:', name, state);
-          } catch(e) { 
-            console.error('[FaceVerification] Storage error:', e);
-          } 
-        };
-        
-        const permissions = ['camera', 'microphone', 'geolocation'];
-        const permissionsGranted = ${_permissionsGranted ? 'true' : 'false'};
-        
-        permissions.forEach(p => storePermission(p, permissionsGranted ? 'granted' : 'denied'));
-        
-        if (navigator.permissions?.query) {
-          const originalQuery = navigator.permissions.query;
-          navigator.permissions.query = function(desc) {
-            console.log('[FaceVerification] Permission query:', desc.name);
-            if (permissions.includes(desc.name)) {
-              return Promise.resolve({ 
-                state: permissionsGranted ? 'granted' : 'denied', 
-                onchange: null 
-              });
-            }
-            return originalQuery.call(this, desc);
-          };
-        }
-        
-        if (navigator.mediaDevices?.getUserMedia) {
-          const originalGetUserMedia = navigator.mediaDevices.getUserMedia;
-          navigator.mediaDevices.getUserMedia = function(constraints) {
-            console.log('[FaceVerification] getUserMedia called:', constraints);
-            if (!permissionsGranted) {
-              return Promise.reject(new Error('Permissions not granted'));
-            }
-            if (constraints.video) storePermission('camera', 'granted');
-            if (constraints.audio) storePermission('microphone', 'granted');
-            return originalGetUserMedia.call(this, constraints);
-          };
-        }
-        
-        if (navigator.geolocation?.getCurrentPosition) {
-          const originalGetPosition = navigator.geolocation.getCurrentPosition;
-          navigator.geolocation.getCurrentPosition = function(success, error, options) {
-            console.log('[FaceVerification] Geolocation requested');
-            if (!permissionsGranted) {
-              if (error) error({ code: 1, message: 'Permission denied' });
-              return;
-            }
-            storePermission('geolocation', 'granted');
-            return originalGetPosition.call(this, success, error, options);
-          };
-        }
-        
-        window.addEventListener('load', function() {
-          console.log('[FaceVerification] Page loaded, permissions:', permissionsGranted);
-          if (permissionsGranted) {
-            permissions.forEach(p => storePermission(p, 'granted'));
-          }
-        });
-        
-        console.log('[FaceVerification] Permission script initialized');
-      })();
-      true;
-    ''';
-
-    try {
-      await _webViewController.runJavaScript(script);
-    } catch (e) {
-      debugPrint('[FaceVerification] Error injecting JS: $e');
-    }
-  }
-
   bool _isVerificationSuccessful() {
     if (_isNormalVerification) {
       return true;
@@ -513,8 +403,9 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
   }
 
   Future<bool> _onWillPop() async {
-    if (await _webViewController.canGoBack()) {
-      _webViewController.goBack();
+    final controller = _webViewController;
+    if (controller != null && await controller.canGoBack()) {
+      controller.goBack();
       return false;
     }
 
@@ -703,7 +594,102 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
           Expanded(
             child: Stack(
               children: [
-                WebViewWidget(controller: _webViewController),
+                InAppWebView(
+                  initialUrlRequest: URLRequest(
+                    url: WebUri(_verificationUrl!),
+                  ),
+                  onWebViewCreated: (controller) {
+                    _webViewController = controller;
+                  },
+                  onLoadStart: (controller, url) {
+                    setState(() {
+                      _webViewLoading = true;
+                    });
+                    if (url != null &&
+                        _shouldInterceptUrl(url.toString()) &&
+                        !_isProcessingComplete) {
+                      _handleVerificationCompletion();
+                    }
+                  },
+                  onLoadStop: (controller, url) {
+                    setState(() {
+                      _webViewLoading = false;
+                    });
+                  },
+                  onReceivedError:
+                      (controller, request, error) {
+                    setState(() {
+                      _webViewLoading = false;
+                    });
+                    debugPrint(
+                        '[FaceVerification] WebView load error: ${error.description}');
+                  },
+                  initialSettings: InAppWebViewSettings(
+                    javaScriptEnabled: true,
+                    mediaPlaybackRequiresUserGesture: false,
+                    cacheEnabled: true,
+                    userAgent:
+                        'Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Mobile Safari/537.36',
+                    allowFileAccess: true,
+                    allowContentAccess: true,
+                    useHybridComposition: true,
+                    geolocationEnabled: _permissionsGranted,
+                    domStorageEnabled: true,
+                    allowsInlineMediaPlayback: true,
+                    allowsBackForwardNavigationGestures: false,
+                  ),
+                  onPermissionRequest: (controller, request) async {
+                    debugPrint(
+                        '[FaceVerification] WebView permission requested: ${request.resources}');
+                    final cameraStatus = await Permission.camera.status;
+                    final micStatus = await Permission.microphone.status;
+                    final locationStatus =
+                        await Permission.locationWhenInUse.status;
+                    // Grant camera/mic/location to WebView when app has already been granted
+                    final canGrantCamera = cameraStatus.isGranted;
+                    final canGrantMic = micStatus.isGranted;
+                    final canGrantLocation = locationStatus.isGranted;
+                    final toGrant = <PermissionResourceType>[];
+                    for (final resource in request.resources) {
+                      final name = resource.toString().toUpperCase();
+                      if ((name.contains('CAMERA') || name.contains('VIDEO')) &&
+                          canGrantCamera) {
+                        toGrant.add(resource);
+                      } else if ((name.contains('MICROPHONE') ||
+                              name.contains('AUDIO')) &&
+                          canGrantMic) {
+                        toGrant.add(resource);
+                      } else if ((name.contains('LOCATION') ||
+                              name.contains('GEOLOCATION')) &&
+                          canGrantLocation) {
+                        toGrant.add(resource);
+                      }
+                    }
+                    if (toGrant.isNotEmpty) {
+                      return PermissionResponse(
+                        resources: toGrant,
+                        action: PermissionResponseAction.GRANT,
+                      );
+                    }
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: PermissionResponseAction.DENY,
+                    );
+                  },
+                  onGeolocationPermissionsShowPrompt:
+                      (controller, origin) async {
+                    final locationStatus =
+                        await Permission.locationWhenInUse.status;
+                    final allowed = locationStatus.isGranted &&
+                        (origin.contains('face-finder') ||
+                            origin.contains('meon.co.in'));
+                    return GeolocationPermissionShowPromptResponse(
+                      origin: origin,
+                      allow: allowed,
+                      retain: true,
+                    );
+                  },
+                ),
                 if (_webViewLoading)
                   Center(
                     child: Container(
@@ -770,8 +756,9 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
           children: [
             InkWell(
               onTap: () async {
-                if (await _webViewController.canGoBack()) {
-                  _webViewController.goBack();
+                final controller = _webViewController;
+                if (controller != null && await controller.canGoBack()) {
+                  controller.goBack();
                 } else {
                   _onWillPop();
                 }
@@ -825,6 +812,27 @@ class _MeonFaceVerificationState extends State<MeonFaceVerification> {
               ),
             ),
             const SizedBox(width: 12),
+            InkWell(
+              onTap: () async {
+                final controller = _webViewController;
+                if (controller != null) {
+                  await controller.reload();
+                }
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.refresh,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             InkWell(
               onTap: _handleClose,
               borderRadius: BorderRadius.circular(20),
